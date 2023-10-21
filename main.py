@@ -7,7 +7,7 @@ from selenium.webdriver.common.by import By
 
 # params
 booking_site_url = 'infosys.doc.ic.ac.uk/internalreg/'
-col_ai_venture = 10
+registration_level_ai = 3
 
 max_try = 2000
 max_error = 10
@@ -18,7 +18,7 @@ pwd = sys.argv[3]
 
 options = Options()
 # comment out this line to see the process in chrome
-options.add_argument('--headless')
+# options.add_argument('--headless')
 options.add_argument('--incognito')
 driver = webdriver.Chrome(
     # '/Users/my_name/dev/stranger_bot/driver/chromedriver',
@@ -43,7 +43,7 @@ def make_a_reservation(username: str, pwd: str) -> bool:
                 if("AI Ventures" in col.text):
                     # print("found it here at least,", colindex)
                     found_req_row = True
-                if(found_req_row and colindex == col_ai_venture):
+                if(found_req_row and colindex == 7 + registration_level_ai):
                     try:
                         col.find_elements(By.TAG_NAME, "input")[0].click()
                         button_clicked = True
