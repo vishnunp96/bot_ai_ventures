@@ -1,148 +1,119 @@
 import sys
-from typing import Tuple
 from time import sleep
 from datetime import time, datetime, timezone, timedelta
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from joblib import Parallel, delayed
+from selenium.webdriver.common.by import By
 
 # params
-booking_site_url = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-begin_time = time(0, 0)
-end_time = time(0, 15)
-max_try = 500
-# reservation_time and reservation_name are given as arguments when python script runs
-reservation_time = int(sys.argv[1])
-reservation_name = sys.argv[2]
+booking_site_url = 'infosys.doc.ic.ac.uk/internalreg/'
+col_ai_venture = 10
+
+max_try = 2000
+max_error = 10
+
+time_interval = int(sys.argv[1])
+username = sys.argv[2]
+pwd = sys.argv[3]
 
 options = Options()
 # comment out this line to see the process in chrome
 options.add_argument('--headless')
+options.add_argument('--incognito')
 driver = webdriver.Chrome(
-    '/Users/my_name/dev/stranger_bot/driver/chromedriver',
+    # '/Users/my_name/dev/stranger_bot/driver/chromedriver',
     options=options
 )
 
-jst = timezone(timedelta(hours=+9), 'JST')
-
-
-def check_current_time(begin_time: time, end_time: time) -> Tuple[time, bool]:
+def make_a_reservation(username: str, pwd: str) -> bool:
     '''
-    Check current time is between 00:00 and 00:15. 
-    Returns current time and if it is between begin and end time.
-    '''
-    dt_now = datetime.now(jst)
-    current_time = time(dt_now.hour, dt_now.minute, dt_now.second)
-    return current_time, (begin_time <= current_time) and (current_time < end_time)
-
-
-def make_a_reservation(reservation_time: int, reservation_name: str) -> bool:
-    '''
-    Make a reservation for the given time and name at the booking site.
-    Return the status if the reservation is made successfully or not.
+    Load the website with basic authentication, passing PLAIN TEXT username and password.
+    If button found, update is attempted.
     '''
     try:
-        driver.get(booking_site_url)
+        driver.get("https://" + username + ":" + pwd + "@" + booking_site_url)
 
-        # go to next week's page
-        driver.find_element_by_xpath('/html/body/div[1]/main/section/div[1]/div[3]/ul[2]/li[3]') \
-            .click()
-
-        # click the given reservation time's box
         sleep(0.5)
-        elements = driver.find_elements_by_xpath('//*[@id="js-lane"]')
-        elements[reservation_time - 10].click()
 
-        # fill in the number of the party
-        input_box = driver.find_element_by_id('lessonEntryPaxCnt')
-        input_box.clear()
-        input_box.send_keys('2')
+        table_courses = driver.find_elements(By.XPATH, "/html/body/form/table")[0]
+        found_req_row = False
+        button_clicked = False
+        for index, row in enumerate(table_courses.find_elements(By.TAG_NAME, "tr")):
+            for colindex,col in enumerate(row.find_elements(By.TAG_NAME, "td")):
+                if("AI Ventures" in col.text):
+                    # print("found it here at least,", colindex)
+                    found_req_row = True
+                if(found_req_row and colindex == col_ai_venture):
+                    try:
+                        col.find_elements(By.TAG_NAME, "input")[0].click()
+                        button_clicked = True
+                    except IndexError as ie:
+                        button_clicked = False
+                        print("AI Ventures is not open yet..")
+                    except Exception as e:
+                        button_clicked = False
+                        print("Button clicking had some problem:", e)
 
-        # press book button
-        btn = driver.find_element_by_xpath('//*[@id="menuDetailForm"]/section/div/div[1]/button')
-        btn.click()
+            if(found_req_row):
+                break
 
-        # fill out contact info
-        contact_dict = {
-            'a': [
-                'dummy_family_name_1', 'dummy_first_name_2', 'ナナシ', 'ゴンベ',
-                'my_email.com', 'my_email.com', '0000000000'
-            ],
-            'b': [
-                'dummy_family_name_2', 'dummy_family_name_2', 'ナナシ', 'ゴンコ',
-                'email.com', 'email.com', '1111111111'
-            ]
-        }
+        if(found_req_row and button_clicked):
+            try:
+                update_row = table_courses.find_elements(By.TAG_NAME, "tr")[-1]
+                update_col = update_row.find_elements(By.TAG_NAME, "td")[-1]
+                for update_button in update_col.find_elements(By.TAG_NAME, "input"):
+                    if("Submit" in update_button.accessible_name):
+                        update_button.click()
+                        break
+            except Exception as e:
+                button_clicked = False
+                print("There was some issue with the update button:", e)
 
-        fill_info = contact_dict[reservation_name]
-        full_name = fill_info[0] + ' ' + fill_info[1]
-        print(f'Getting reservation for {full_name}')
-
-        if reservation_name not in ['k', 'r']:
-            raise ValueError('reservation_name needs to be either "r" or "k"')
-
-        for idx, info in enumerate(fill_info):
-            driver.find_element_by_xpath(
-                f'//*[@id="frontLessonBookingEditForm"]/section[2]/table/tbody/tr[{idx + 1}]/td/div/input') \
-                .send_keys(info)
-
-        # press submit buttom
-        btn = driver.find_element_by_xpath('//*[@id="frontLessonBookingEditForm"]/div[1]/button')
-        btn.click()
-
-        # press book button
-        driver.find_element_by_id('btnBookingComplete').click()
-
-        return True
+        if(found_req_row and button_clicked):
+            return True
     except Exception as e:
-        print(e)
-        return False
+        raise e
     finally:
-        # close the drivers
-        driver.quit()
+        return False
 
 
-def try_booking(reservation_time: int, reservation_name: str, max_try: int = 1000) -> None:
+def try_booking(time_interval: int, username: str, pwd: str, max_try: int = 1000) -> None:
     '''
-    Try booking a reservation until either one reservation is made successfully or the attempt time reaches the max_try
+    Keep trying until max_try with interval of time_interval to go through with the booking.
+    If max_errors hit, back off for 10*time_interval minutes before continuing
     '''
-    # initialize the params
-    current_time, is_during_running_time = check_current_time(begin_time, end_time)
     reservation_completed = False
     try_num = 1
+    num_error = 0
 
-    # repreat booking a reservation every second
+    # repeat booking a reservation every time_interval minutes
     while True:
-        if not is_during_running_time:
-            print(f'Not Running the program. It is {current_time} and not between {begin_time} and {end_time}')
-
-            # sleep less as the time gets close to the begin_time
-            if current_time >= time(23, 59, 59):
-                sleep(0.001)
-            elif time(23, 59, 58) <= current_time < time(23, 59, 59):
-                sleep(0.5)
-            else:
-                sleep(1)
-
-            try_num += 1
-            current_time, is_during_running_time = check_current_time(begin_time, end_time)
-            continue
 
         print(f'----- try : {try_num} -----')
         # try to get ticket
-        reservation_completed = make_a_reservation(reservation_time, reservation_name)
+        try:
+            reservation_completed = make_a_reservation(username, pwd)
+        except Exception as none:
+            num_error += 1
 
         if reservation_completed:
-            print('Got a ticket!!')
+            print('Got AI venture!!')
             break
         elif try_num == max_try:
-            print(f'Tried {try_num} times, but couldn\'t get tickets..')
+            print(f'Tried {try_num} times, but couldn\'t get AI venture..')
             break
+        elif num_error >= max_error:
+            print('Too many errors, better to back off for a bit.. ')
+            sleep(time_interval*10*60)
+            num_error = 0
         else:
-            sleep(1)
+            print("Current time :\t", datetime.now())
+            print("Next try:\t", datetime.now() + timedelta(minutes=time_interval))
+            sleep(time_interval*60)
             try_num += 1
-            current_time, is_during_running_time = check_current_time(begin_time, end_time)
+
+    driver.quit()
 
 
 if __name__ == '__main__':
-    try_booking(reservation_time, reservation_name, max_try)
+    try_booking(time_interval, username, pwd, max_try)
