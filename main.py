@@ -72,9 +72,12 @@ def make_a_reservation(username: str, pwd: str) -> bool:
         if(found_req_row and button_clicked):
             return True
     except Exception as e:
+        print(e)
         raise e
-    finally:
-        return False
+    # finally:
+        # driver.quit()
+
+    return False
 
 
 def try_booking(time_interval: int, username: str, pwd: str, max_try: int = 1000) -> None:
@@ -109,7 +112,7 @@ def try_booking(time_interval: int, username: str, pwd: str, max_try: int = 1000
         else:
             print("Current time :\t", datetime.now())
             print("Next try:\t", datetime.now() + timedelta(minutes=time_interval))
-            sleep(time_interval*60)
+            sleep(time_interval)
             try_num += 1
 
     driver.quit()
