@@ -111,7 +111,8 @@ def try_booking(time_interval: int, username: str, pwd: str, max_try: int = 1000
             num_error = 0
         else:
             print("Current time :\t", datetime.now())
-            print("Next try:\t", datetime.now() + timedelta(minutes=time_interval))
+            print("Next try:\t", datetime.now() + timedelta(seconds=time_interval))
+
             sleep(time_interval)
             try_num += 1
 
