@@ -88,6 +88,7 @@ def try_booking(time_interval: int, username: str, pwd: str, max_try: int = 1000
     reservation_completed = False
     try_num = 1
     num_error = 0
+    init_timeout = False
 
     # repeat booking a reservation every time_interval minutes
     while True:
@@ -111,10 +112,16 @@ def try_booking(time_interval: int, username: str, pwd: str, max_try: int = 1000
             num_error = 0
         else:
             print("Current time :\t", datetime.now())
-            print("Next try:\t", datetime.now() + timedelta(seconds=time_interval))
+            if not init_timeout:
+                print("Next try:\t", datetime.now() + timedelta(minutes=100))
+                init_timeout = True
+                sleep(100*60)
+            else:
 
-            sleep(time_interval)
-            try_num += 1
+                print("Next try:\t", datetime.now() + timedelta(seconds=time_interval))
+
+                sleep(time_interval)
+                try_num += 1
 
     driver.quit()
 
